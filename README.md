@@ -1,6 +1,6 @@
 # FCP Shotcut
 
-FCP Shotcut turns a folder of downloaded videos into a Final Cut Pro XML timeline where each detected shot is already split into its own editable clip.
+FCP Shotcut turns a single downloaded video or a folder of videos into a Final Cut Pro XML timeline where each detected shot is already split into its own editable clip.
 
 It is designed for short-form vertical video workflows: manually collect videos, run FCP Shotcut, import the generated XML into Final Cut Pro, then continue editing by hand.
 
@@ -54,12 +54,12 @@ Download the release DMG, open it, then double-click:
 FCP Shotcut.app
 ```
 
-Choose the folder containing your videos, adjust scene sensitivity if needed, then click **Generate Final Cut Pro XML**.
+Choose one video file or a folder containing videos, adjust scene sensitivity if needed, then click **Generate Final Cut Pro XML**.
 
 The output is written to:
 
 ```text
-<your video folder>/edit/timeline.fcpxml
+<your video file's folder or video folder>/edit/timeline.fcpxml
 ```
 
 Import it in Final Cut Pro:
@@ -74,6 +74,12 @@ From this repo:
 
 ```bash
 ./fcp-shotcut /path/to/videos
+```
+
+For one video file:
+
+```bash
+./fcp-shotcut /path/to/video.mp4
 ```
 
 Or from inside a folder of videos:

@@ -1,6 +1,6 @@
 import Cocoa
+import UniformTypeIdentifiers
 
-@main
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow!
     private let folderField = NSTextField()
@@ -16,10 +16,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let logView = NSTextView()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
         buildWindow()
+        showMainWindow()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showMainWindow()
+        return true
+    }
+
+    private func showMainWindow() {
+        if window == nil {
+            buildWindow()
+        }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.window.orderFrontRegardless()
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
     }
 
     private func buildWindow() {
@@ -30,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             defer: false
         )
         window.title = "FCP Shotcut"
-        window.center()
+        placeWindowOnMainScreen()
 
         let root = NSStackView()
         root.orientation = .vertical
@@ -43,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let subtitle = NSTextField(labelWithString: "Vertical 1080x1920 / 30p / Apple ProRes 422 / Rec.709 / Stereo 48kHz")
         subtitle.textColor = .secondaryLabelColor
 
-        folderField.placeholderString = "/Users/you/Videos/douyin"
+        folderField.placeholderString = "/Users/you/Videos/douyin or /Users/you/Videos/clip.mp4"
         projectField.placeholderString = "Auto-generated if blank"
         eventField.stringValue = "4-16-26"
         minShotField.stringValue = "0.35"
@@ -58,7 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         logView.isEditable = false
         logView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        logView.string = "Choose a folder, then generate timeline.fcpxml.\n"
+        logView.string = "Choose a video file or folder, then generate timeline.fcpxml.\n"
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
         scroll.documentView = logView
@@ -67,7 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         root.addArrangedSubview(title)
         root.addArrangedSubview(subtitle)
-        root.addArrangedSubview(row(label: "Video folder", control: folderField, buttonTitle: "Choose...", action: #selector(chooseFolder)))
+        root.addArrangedSubview(row(label: "Video input", control: folderField, buttonTitle: "Choose...", action: #selector(chooseFolder)))
         root.addArrangedSubview(row(label: "Project name", control: projectField))
         root.addArrangedSubview(twoColumnRow(
             leftLabel: "Event name", leftControl: eventField,
@@ -87,6 +106,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             root.topAnchor.constraint(equalTo: window.contentView!.topAnchor),
             root.bottomAnchor.constraint(equalTo: window.contentView!.bottomAnchor)
         ])
+    }
+
+    private func placeWindowOnMainScreen() {
+        guard let screen = NSScreen.main else {
+            window.center()
+            return
+        }
+        let visible = screen.visibleFrame
+        let frame = window.frame
+        let x = visible.midX - frame.width / 2
+        let y = visible.midY - frame.height / 2
+        window.setFrameOrigin(NSPoint(x: x, y: y))
     }
 
     private func label(_ text: String) -> NSTextField {
@@ -156,18 +187,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func chooseFolder() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
-        panel.canChooseFiles = false
+        panel.canChooseFiles = true
         panel.allowsMultipleSelection = false
-        panel.message = "Choose a folder with videos"
+        panel.allowedContentTypes = ["mp4", "mov", "m4v"].compactMap { UTType(filenameExtension: $0) }
+        panel.message = "Choose a video file or a folder with videos"
         if panel.runModal() == .OK, let url = panel.url {
             folderField.stringValue = url.path
         }
     }
 
     @objc private func generate() {
-        let folder = folderField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !folder.isEmpty, FileManager.default.fileExists(atPath: folder) else {
-            alert("Please choose a valid video folder.")
+        let input = folderField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !input.isEmpty, FileManager.default.fileExists(atPath: input) else {
+            alert("Please choose a valid video file or folder.")
             return
         }
 
@@ -175,7 +207,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let cli = resources.appendingPathComponent("fcp_shotcut.py").path
         var args = [
             cli,
-            folder,
+            input,
             "--event-name", eventField.stringValue.isEmpty ? "4-16-26" : eventField.stringValue,
             "--threshold", String(format: "%.3f", thresholdSlider.doubleValue),
             "--min-shot-len", minShotField.stringValue.isEmpty ? "0.35" : minShotField.stringValue
@@ -226,10 +258,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showOutput() {
-        let folder = folderField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !folder.isEmpty else { return }
-        let edit = URL(fileURLWithPath: folder).appendingPathComponent("edit")
-        let target = FileManager.default.fileExists(atPath: edit.path) ? edit : URL(fileURLWithPath: folder)
+        let input = folderField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !input.isEmpty else { return }
+        let inputURL = URL(fileURLWithPath: input)
+        var isDirectory: ObjCBool = false
+        FileManager.default.fileExists(atPath: input, isDirectory: &isDirectory)
+        let base = isDirectory.boolValue ? inputURL : inputURL.deletingLastPathComponent()
+        let edit = base.appendingPathComponent("edit")
+        let target = FileManager.default.fileExists(atPath: edit.path) ? edit : base
         NSWorkspace.shared.open(target)
     }
 
@@ -240,3 +276,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.runModal()
     }
 }
+
+let app = NSApplication.shared
+let delegate = AppDelegate()
+app.delegate = delegate
+app.setActivationPolicy(.regular)
+app.run()

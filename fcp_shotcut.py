@@ -50,6 +50,12 @@ class ClipAsset:
     frame_duration: str | None = None
 
 
+@dataclass
+class InputSelection:
+    base_dir: Path
+    videos: list[Path]
+
+
 def seconds_to_fcpx_time(seconds: float, fps: int = FPS) -> str:
     frames = max(0, int(round(seconds * fps)))
     if frames == 0:
@@ -226,6 +232,16 @@ def list_videos(input_dir: Path) -> list[Path]:
     return sorted(p for p in input_dir.iterdir() if p.is_file() and p.suffix.lower() in VIDEO_EXTS)
 
 
+def resolve_input(input_path: Path) -> InputSelection:
+    if input_path.is_file():
+        if input_path.suffix.lower() not in VIDEO_EXTS:
+            raise ValueError(f"Input file is not a supported video: {input_path}")
+        return InputSelection(base_dir=input_path.parent, videos=[input_path])
+    if input_path.is_dir():
+        return InputSelection(base_dir=input_path, videos=list_videos(input_path))
+    raise FileNotFoundError(f"Input does not exist: {input_path}")
+
+
 def make_previews(asset: ClipAsset, preview_dir: Path) -> None:
     preview_dir.mkdir(parents=True, exist_ok=True)
     for idx, shot in enumerate(asset.shots[1:], start=1):
@@ -300,16 +316,16 @@ def write_report(assets: list[ClipAsset], out_path: Path, threshold: float, min_
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def build_project_name(input_dir: Path) -> str:
+def build_project_name(input_path: Path) -> str:
     stamp = dt.datetime.now().strftime("%Y-%m-%d %H.%M")
-    safe = input_dir.name.strip() or "Shotcut"
+    safe = (input_path.stem if input_path.is_file() else input_path.name).strip() or "Shotcut"
     return f"{safe} Shotcut {stamp}"
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Generate a vertical 1080x1920 30p FCPXML timeline split by scene cuts.")
-    parser.add_argument("input_dir", help="Folder containing mp4/mov/m4v videos")
-    parser.add_argument("--export", help="Output .fcpxml path. Default: <input>/edit/timeline.fcpxml")
+    parser.add_argument("input", help="Video file or folder containing mp4/mov/m4v videos")
+    parser.add_argument("--export", help="Output .fcpxml path. Default: <video-or-folder-parent>/edit/timeline.fcpxml")
     parser.add_argument("--project-name", help="Final Cut Pro project name. Default is generated")
     parser.add_argument("--event-name", default="4-16-26", help="Final Cut Pro event name")
     parser.add_argument("--threshold", type=float, default=0.35, help="Scene detection threshold; lower finds more cuts")
@@ -317,16 +333,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-previews", action="store_true", help="Skip before/after cut preview JPGs")
     args = parser.parse_args(argv)
 
-    input_dir = Path(args.input_dir).expanduser().resolve()
-    if not input_dir.is_dir():
-        print(f"Input is not a directory: {input_dir}", file=sys.stderr)
+    input_path = Path(args.input).expanduser().resolve()
+    try:
+        selection = resolve_input(input_path)
+    except (FileNotFoundError, ValueError) as error:
+        print(error, file=sys.stderr)
         return 2
-    videos = list_videos(input_dir)
+    videos = selection.videos
     if not videos:
-        print(f"No videos found in {input_dir} ({', '.join(sorted(VIDEO_EXTS))})", file=sys.stderr)
+        print(f"No videos found in {input_path} ({', '.join(sorted(VIDEO_EXTS))})", file=sys.stderr)
         return 2
 
-    edit_dir = input_dir / "edit"
+    edit_dir = selection.base_dir / "edit"
     edit_dir.mkdir(exist_ok=True)
     export_path = Path(args.export).expanduser().resolve() if args.export else edit_dir / "timeline.fcpxml"
     assets = []
@@ -337,7 +355,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.no_previews:
             make_previews(asset, edit_dir / "cut-previews")
 
-    project_name = args.project_name or build_project_name(input_dir)
+    project_name = args.project_name or build_project_name(input_path)
     export_path.write_text(build_fcpxml(assets, project_name, args.event_name), encoding="utf-8")
     write_report(assets, edit_dir / "scene-report.json", args.threshold, args.min_shot_len)
     print(f"Wrote {export_path}")

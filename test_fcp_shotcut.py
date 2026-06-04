@@ -7,7 +7,14 @@ from xml.etree import ElementTree as ET
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fcp_shotcut import ClipAsset, Shot, build_fcpxml, merge_short_shots, seconds_to_fcpx_time
+from fcp_shotcut import (
+    ClipAsset,
+    Shot,
+    build_fcpxml,
+    merge_short_shots,
+    resolve_input,
+    seconds_to_fcpx_time,
+)
 
 
 class FcpShotcutTests(unittest.TestCase):
@@ -63,6 +70,29 @@ class FcpShotcutTests(unittest.TestCase):
         shot = Shot(0, 1.25)
         payload = {"shots": [shot.to_dict()]}
         self.assertEqual(json.loads(json.dumps(payload))["shots"][0]["duration"], 1.25)
+
+    def test_resolve_input_accepts_single_video_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            media = Path(tmp) / "随便取名.mov"
+            media.write_bytes(b"placeholder")
+            selection = resolve_input(media)
+
+        self.assertEqual(selection.base_dir, media.parent)
+        self.assertEqual(selection.videos, [media])
+
+    def test_resolve_input_accepts_video_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            first = folder / "a.mp4"
+            second = folder / "b.mov"
+            ignored = folder / "notes.txt"
+            first.write_bytes(b"placeholder")
+            second.write_bytes(b"placeholder")
+            ignored.write_text("ignore me", encoding="utf-8")
+            selection = resolve_input(folder)
+
+        self.assertEqual(selection.base_dir, folder)
+        self.assertEqual(selection.videos, [first, second])
 
 
 if __name__ == "__main__":
