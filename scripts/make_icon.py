@@ -31,13 +31,13 @@ def make_base(size: int = 1024) -> Image.Image:
 
     bg = Image.new("RGBA", (size, size))
     bg_px = bg.load()
-    top = (81, 68, 222)
-    bottom = (0, 198, 172)
+    top = (245, 249, 255)
+    bottom = (204, 233, 255)
     for y in range(size):
         t = y / (size - 1)
         for x in range(size):
-            side = (x / (size - 1) - 0.5) * 0.18
-            tt = min(1, max(0, t + side))
+            radial = math.hypot((x / size) - 0.32, (y / size) - 0.2) * 0.24
+            tt = min(1, max(0, t + radial))
             bg_px[x, y] = (
                 lerp(top[0], bottom[0], tt),
                 lerp(top[1], bottom[1], tt),
@@ -48,42 +48,64 @@ def make_base(size: int = 1024) -> Image.Image:
     img.alpha_composite(bg)
     img.putalpha(mask)
 
+    d = ImageDraw.Draw(img)
+
+    # Subtle glass highlight, like a native macOS utility icon.
+    shine = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    sh = ImageDraw.Draw(shine)
+    sh.ellipse((-170, -250, 1020, 540), fill=(255, 255, 255, 95))
+    shine.putalpha(shine.split()[-1].filter(ImageFilter.GaussianBlur(12)))
+    img.alpha_composite(shine)
+
     shadow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     sd = ImageDraw.Draw(shadow)
-    frame = (278, 116, 746, 908)
-    sd.rounded_rectangle(frame, radius=72, fill=(0, 0, 0, 90))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(24))
+    phone = (310, 116, 714, 908)
+    sd.rounded_rectangle(phone, radius=86, fill=(18, 34, 64, 80))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(30))
     img.alpha_composite(shadow)
 
-    d = ImageDraw.Draw(img)
-    d.rounded_rectangle(frame, radius=72, fill=(246, 250, 255, 240), outline=(255, 255, 255, 210), width=10)
-    inner = (322, 166, 702, 858)
-    d.rounded_rectangle(inner, radius=42, fill=(24, 31, 50, 255))
+    # Main vertical timeline glyph.
+    d.rounded_rectangle(phone, radius=86, fill=(255, 255, 255, 250))
+    inner = (350, 160, 674, 864)
+    d.rounded_rectangle(inner, radius=52, fill=(23, 36, 64, 255))
 
-    colors = [(113, 88, 255), (0, 203, 190), (255, 255, 255)]
-    shot_h = 118
-    y = 205
-    for i in range(4):
-        color = colors[i % len(colors)]
-        d.rounded_rectangle((356, y, 668, y + shot_h), radius=26, fill=color + (245,))
-        if i < 3:
-            dash_y = y + shot_h + 27
-            for x in range(354, 669, 50):
-                d.line((x, dash_y, x + 25, dash_y), fill=(255, 255, 255, 180), width=10)
-        y += 155
+    track = (394, 220, 630, 790)
+    d.rounded_rectangle(track, radius=42, fill=(36, 55, 92, 255))
 
-    # Small stylized scissors at the main cut.
-    cx, cy = 512, 535
-    d.line((430, 450, 594, 616), fill=(255, 255, 255, 245), width=22)
-    d.line((594, 450, 430, 616), fill=(255, 255, 255, 245), width=22)
-    d.ellipse((360, 590, 455, 685), outline=(255, 255, 255, 245), width=20)
-    d.ellipse((569, 590, 664, 685), outline=(255, 255, 255, 245), width=20)
-    d.ellipse((cx - 19, cy - 19, cx + 19, cy + 19), fill=(24, 31, 50, 255))
+    # Three clean shot blocks, separated by fine cut lines. Keep the palette
+    # restrained so the icon reads like a native macOS utility.
+    blocks = [
+        ((418, 248, 606, 374), (82, 121, 255)),
+        ((418, 428, 606, 554), (82, 121, 255)),
+        ((418, 608, 606, 734), (82, 121, 255)),
+    ]
+    for rect, color in blocks:
+        d.rounded_rectangle(rect, radius=28, fill=color + (255,))
 
-    highlight = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    hd = ImageDraw.Draw(highlight)
-    hd.arc((82, 72, 942, 932), start=210, end=300, fill=(255, 255, 255, 80), width=18)
-    img.alpha_composite(highlight)
+    for y in (400, 580):
+        d.line((394, y, 630, y), fill=(236, 244, 255, 230), width=10)
+        d.polygon([(512, y - 22), (543, y), (512, y + 22)], fill=(236, 244, 255, 245))
+
+    # Minimal playhead/cut indicator.
+    d.line((512, 205, 512, 808), fill=(255, 255, 255, 210), width=8)
+    d.ellipse((492, 492, 532, 532), fill=(255, 255, 255, 255))
+    d.ellipse((502, 502, 522, 522), fill=(23, 36, 64, 255))
+
+    # Tiny FCP-like sparkle accent, restrained.
+    accent = (706, 194)
+    d.polygon(
+        [
+            (accent[0], accent[1] - 28),
+            (accent[0] + 9, accent[1] - 8),
+            (accent[0] + 30, accent[1]),
+            (accent[0] + 9, accent[1] + 8),
+            (accent[0], accent[1] + 28),
+            (accent[0] - 9, accent[1] + 8),
+            (accent[0] - 30, accent[1]),
+            (accent[0] - 9, accent[1] - 8),
+        ],
+        fill=(82, 121, 255, 145),
+    )
     return img
 
 
