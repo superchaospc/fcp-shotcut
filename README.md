@@ -131,7 +131,6 @@ Run tests:
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest test_fcp_shotcut.py
 ```
 
-Build a release zip:
 Build release DMG and zip assets:
 
 ```bash
