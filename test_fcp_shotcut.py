@@ -11,6 +11,7 @@ from fcp_shotcut import (
     ClipAsset,
     Shot,
     build_fcpxml,
+    file_url,
     merge_short_shots,
     resolve_input,
     seconds_to_fcpx_time,
@@ -65,6 +66,25 @@ class FcpShotcutTests(unittest.TestCase):
         asset_el = root.find("./resources/asset[@id='a1']")
         self.assertEqual(asset_el.attrib["hasVideo"], "1")
         self.assertNotIn("hasAudio", asset_el.attrib)
+        # FCPXML 1.6+ removed `src` from <asset>; the media path lives on
+        # the child <media-rep>. A `src` on <asset> fails FCP DTD validation.
+        self.assertNotIn("src", asset_el.attrib)
+        media_rep = asset_el.find("media-rep")
+        self.assertIsNotNone(media_rep)
+        self.assertIn("src", media_rep.attrib)
+
+    def test_file_url_is_well_formed_and_encoded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            media = Path(tmp) / "随便 取名.mp4"
+            media.write_bytes(b"placeholder")
+            url = file_url(media)
+
+        # Exactly three slashes after "file:" (empty authority), not five.
+        self.assertTrue(url.startswith("file:///"))
+        self.assertFalse(url.startswith("file:////"))
+        # Non-ASCII and spaces must be percent-encoded.
+        self.assertNotIn(" ", url)
+        self.assertIn("%E9%9A%8F", url)
 
     def test_report_shape_is_json_serializable(self):
         shot = Shot(0, 1.25)

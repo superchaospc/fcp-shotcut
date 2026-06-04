@@ -13,7 +13,6 @@ import re
 import subprocess
 import sys
 from typing import Any
-from urllib.request import pathname2url
 import xml.etree.ElementTree as ET
 
 
@@ -64,7 +63,11 @@ def seconds_to_fcpx_time(seconds: float, fps: int = FPS) -> str:
 
 
 def file_url(path: Path) -> str:
-    return "file://" + pathname2url(str(path.resolve()))
+    # Path.as_uri() yields a correct, percent-encoded file URL across Python
+    # versions. Manually concatenating "file://" + pathname2url() breaks on
+    # Python 3.14, where pathname2url() returns an empty authority ("///path")
+    # and the result becomes "file://///path".
+    return path.resolve().as_uri()
 
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
@@ -176,10 +179,12 @@ def build_fcpxml(assets: list[ClipAsset], project_name: str, event_name: str) ->
                 "height": str(asset.height),
                 "colorSpace": "1-1-1 (Rec. 709)",
             })
+        # FCPXML 1.6+ dropped the `src` attribute on <asset>; the media path
+        # is carried by the child <media-rep> below. Emitting `src` here fails
+        # Final Cut Pro DTD validation ("No declaration for attribute src").
         attrs = {
             "id": asset.asset_id,
             "name": asset.name,
-            "src": file_url(asset.path),
             "start": "0s",
             "duration": seconds_to_fcpx_time(asset.duration),
             "hasVideo": "1",
